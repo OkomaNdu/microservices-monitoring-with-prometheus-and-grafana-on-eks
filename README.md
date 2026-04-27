@@ -67,93 +67,57 @@ This project demonstrates a **production-style monitoring and alerting system** 
 ## Architecture
 
 ```mermaid
-flowchart TD
-    classDef aws        fill:#FF9900,color:#000,stroke:#FF9900,font-weight:bold
-    classDef app        fill:#326CE5,color:#fff,stroke:#1a56cc
-    classDef prom       fill:#E6522C,color:#fff,stroke:#c43d1a
-    classDef grafana    fill:#F46800,color:#fff,stroke:#c45500
-    classDef alert      fill:#D32F2F,color:#fff,stroke:#b71c1c
-    classDef exporter   fill:#7B1FA2,color:#fff,stroke:#6a1890
-    classDef external   fill:#388E3C,color:#fff,stroke:#2e7d32
-    classDef storage    fill:#455A64,color:#fff,stroke:#37474f
+flowchart LR
+    classDef app      fill:#326CE5,color:#fff,stroke:#1a56cc
+    classDef prom     fill:#E6522C,color:#fff,stroke:#c43d1a
+    classDef grafana  fill:#F46800,color:#fff,stroke:#c45500
+    classDef alert    fill:#D32F2F,color:#fff,stroke:#b71c1c
+    classDef exporter fill:#7B1FA2,color:#fff,stroke:#6a1890
+    classDef external fill:#388E3C,color:#fff,stroke:#2e7d32
+    classDef sd       fill:#0097A7,color:#fff,stroke:#00838F
 
-    %% ── Metric Sources (Targets) ──────────────────────────────────────────
-    subgraph EKS["☁️  Amazon EKS  ·  ca-central-1  ·  Kubernetes v1.34  ·  2 Nodes"]
+    %% ── LEFT col: Metric Targets ──────────────────────────────────────────
+    NE["📊 Node Exporter ×2\n:9100\nCPU · Memory · Disk · Network"]:::exporter
+    KSM["📈 kube-state-metrics\n:8080\nPod · Deployment · Node state"]:::exporter
+    REXP["🔴 Redis Exporter v1.82.0\n:9121\nConnections · Memory · Commands"]:::exporter
+    MS["🛒 Online Boutique\n11 Microservices\nfrontend · cart · checkout\npayment · product · email\ncurrency · shipping · ad"]:::app
+    RC["🗄️ redis-cart\n:6379"]:::app
 
-        subgraph DEFAULT["📦  default namespace"]
-            MS["🛒  Online Boutique\nfrontend · cart · checkout · payment\nproduct · email · currency · shipping\nrecommendation · ad\n──────────────────\nLoadBalancer → :80"]
-            RC["🗄️  redis-cart\n:6379"]
-        end
+    %% ── LEFT col: Service Discovery (bottom) ──────────────────────────────
+    SD["🔍 Service Discovery\nKubernetes API\nServiceMonitor CRDs"]:::sd
 
-        %% ── Service Discovery ──────────────────────────────────────────────
-        SD["🔍  Service Discovery\nKubernetes API\nServiceMonitor CRDs"]
-
-        %% ── Exporters ──────────────────────────────────────────────────────
-        NE["📊  Node Exporter  ×2\n:9100\nCPU · Memory · Disk · Network"]
-        KSM["📈  kube-state-metrics\n:8080\nPod · Deployment · Node state"]
-        REXP["🔴  Redis Exporter  v1.82.0\n:9121\nConnections · Memory · Commands"]
-
-        %% ── Prometheus Server ──────────────────────────────────────────────
-        subgraph PSRV["🔥  Prometheus Server  (monitoring namespace)"]
-            direction LR
-            RET["⬇️ Retrieval\n(scrape engine)"]
-            TSDB["💾 TSDB\n(time-series store)"]
-            HTTP["🌐 HTTP Server\n:9090"]
-            RET --> TSDB --> HTTP
-        end
-
-        %% ── Prometheus Operator ────────────────────────────────────────────
-        OP["⚙️  Prometheus Operator  v0.90.1\nManages Prometheus & Alertmanager\nvia PrometheusRule / AlertmanagerConfig CRDs"]
-
-        %% ── Alertmanager ───────────────────────────────────────────────────
-        AM["🔔  Alertmanager  v0.32.0\n:9093\nDeduplicate · Group · Route\nRepeat interval: 30 min"]
-
-        %% ── Visualisation ──────────────────────────────────────────────────
-        GF["📉  Grafana\n:8080\nRedis · K8s · Node dashboards"]
-        PUI["🔥  Prometheus UI\n:9090\nQuery · Alerts · Status"]
-
+    %% ── CENTER: Prometheus Server ─────────────────────────────────────────
+    subgraph PSRV["🔥  Prometheus Server  —  monitoring namespace  ·  kube-prometheus-stack v83.7.0"]
+        direction LR
+        RET["⬇️ Retrieval\n(scrape engine)"]:::prom
+        TSDB["💾 TSDB\n(time-series store)"]:::prom
+        HTTP["🌐 HTTP Server\n:9090"]:::prom
+        RET --> TSDB --> HTTP
     end
 
-    %% ── External Notification ──────────────────────────────────────────────
-    EMAIL["📧  Gmail\nSMTP :587\nHostHighCpuLoad\nKubernetesPodCrashLooping\nRedisDown · RedisTooManyConnections"]
+    %% ── RIGHT col: Alerting (top) ─────────────────────────────────────────
+    AM["🔔 Alertmanager v0.32.0\n:9093\nDeduplicate · Group · Route\nRepeat interval: 30 min"]:::alert
+    EMAIL["📧 Gmail\nSMTP :587\nHostHighCpuLoad\nKubernetesPodCrashLooping\nRedisDown · RedisTooManyConnections"]:::external
 
-    %% ── Flows ──────────────────────────────────────────────────────────────
+    %% ── RIGHT col: Visualisation (bottom) ────────────────────────────────
+    GF["📉 Grafana\n:8080\nRedis · K8s · Node dashboards"]:::grafana
+    PUI["🔥 Prometheus UI\n:9090\nQuery · Alerts · Status"]:::prom
+    API["🔌 API\n:9090/api"]:::exporter
 
-    %% Operator manages stack
-    OP -. "reconcile CRDs" .-> PSRV
-    OP -. "reconcile CRDs" .-> AM
+    %% ── Row 1: Targets ──pull metrics──► Prometheus ──push alerts──► Alertmanager ──► Gmail
+    NE   -->|"pull metrics"| RET
+    KSM  -->|"pull metrics"| RET
+    REXP -->|"pull metrics"| RET
+    MS   -.->|"pod & container state"| KSM
+    RC   -->|"scrape redis INFO"| REXP
+    HTTP -->|"push firing alerts"| AM
+    AM   -->|"email · SMTP · TLS"| EMAIL
 
-    %% Service Discovery
-    SD -->|"discover scrape targets"| RET
-
-    %% Exporters pull metrics into Prometheus
-    NE       -->|"pull metrics · /metrics"| RET
-    KSM      -->|"pull metrics · /metrics"| RET
-    REXP     -->|"pull metrics · /metrics"| RET
-
-    %% Redis is scraped by Redis Exporter
-    RC       -->|"scrape redis INFO"| REXP
-
-    %% Microservices produce k8s-level metrics via kube-state-metrics
-    MS       -.->|"pod & container state"| KSM
-
-    %% Alert pipeline
-    HTTP     -->|"push firing alerts"| AM
-    AM       -->|"email notification\nSMTP · TLS"| EMAIL
-
-    %% Visualisation / Query layer
-    HTTP     -->|"PromQL queries"| GF
-    HTTP     -->|"PromQL queries"| PUI
-
-    %% Style assignments
-    class MS,RC app
-    class RET,TSDB,HTTP,PSRV prom
-    class GF grafana
-    class AM alert
-    class NE,KSM,REXP exporter
-    class EMAIL external
-    class OP storage
-    class SD storage
+    %% ── Row 2: Service Discovery ──discover──► Prometheus ──PromQL──► Grafana · PUI · API
+    SD   -->|"discover targets"| RET
+    HTTP -->|"PromQL"| GF
+    HTTP -->|"PromQL"| PUI
+    HTTP -->|"PromQL"| API
 ```
 
 **Data flow — step by step:**
