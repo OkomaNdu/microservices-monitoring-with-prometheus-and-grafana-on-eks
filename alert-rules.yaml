@@ -19,7 +19,7 @@ spec:
       annotations:
         description:  "CPU load on host is over 50%\n Value = {{ $value }}\n Instance = {{ $labels.instance }}\n"
         summary: "CPU load on host is over 50%\ Value"
-    - alert: kubernetesPodCrashLooping
+    - alert: KubernetesPodCrashLooping
       expr: kube_pod_init_container_status_restarts_total > 5
       for: 0m
       labels:
@@ -27,5 +27,5 @@ spec:
         namespace: monitoring
       annotations:
         description: "Pod {{$labels.pd}} is crash loooping\n Value = {{$value}}"
-        summary: "kubernetes pod crash looping"
+        summary: "Kubernetes pod crash looping"
 

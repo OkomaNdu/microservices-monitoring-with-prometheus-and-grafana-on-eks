@@ -13,7 +13,7 @@ spec:
         value: HostHighCpuLoad
     - matchers: 
       - name: alertname
-        value: KubernetesPodCrashLooping
+        value: KubernetesPodCrashLooping 
   receivers:
   - name: 'email'
     emailConfigs:
