@@ -1,4 +1,4 @@
 # Kubernetes secrets — never commit these
 email-secret.yaml
-*-secret.yaml
-*.secret.yaml
+*secret.yaml
+*config.yaml
